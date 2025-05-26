@@ -1,0 +1,54 @@
+name: Secrets and Environment Variables Demo
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        default: 'development'
+        type: choice
+        options:
+          - development
+          - staging
+          - production
+
+# Repository-level environment variables
+env:
+  NODE_VERSION: '18'
+  TIMEZONE: 'UTC'
+  LOG_LEVEL: 'info'
+
+jobs:
+  # Job 1: Basic secrets and environment variables usage
+  basic-usage:
+    runs-on: ubuntu-latest
+    
+    # Job-level environment variables
+    env:
+      JOB_NAME: 'Basic Usage Demo'
+      BUILD_TYPE: 'debug'
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Display environment variables
+        run: |
+          echo "Repository-level env var: NODE_VERSION=$NODE_VERSION"
+          echo "Job-level env var: JOB_NAME=$JOB_NAME"
+          echo "GitHub default env var: GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+      
+      - name: Use secrets safely
+        env:
+          # Step-level environment variables from secrets
+          API_KEY: ${{ secrets.API_KEY }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+        run: |
+          # Never echo secrets directly
+          echo "API_KEY is set: $([[ ! -z "$API_KEY" ]] && echo 'Yes' || echo 'No')"
+          echo "DATABASE_URL is set: $([[ ! -z "$DATABASE_URL" ]] && echo 'Yes' || echo 'No')"
