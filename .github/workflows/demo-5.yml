@@ -7,7 +7,7 @@ on:
       - 'src/**'
       - 'package.json'
       - '.github/workflows/demo-5.yml'
-      - '.github/actions/**'
+      - '.github/actions/demo-5/**'
 
 jobs:
   simple-example:
