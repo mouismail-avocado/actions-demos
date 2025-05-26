@@ -1,0 +1,47 @@
+name: Simple Composite Action Example
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - 'src/**'
+      - 'package.json'
+      - '.github/workflows/demo-5.yml'
+      - '.github/actions/**'
+
+jobs:
+  simple-example:
+    name: Simple Build and Test
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup project with composite action
+        id: setup
+        uses: ./.github/actions/demo-5/setup-project
+        with:
+          node-version: '18'
+          install-deps: 'true'
+
+      - name: Display setup results
+        run: |
+          echo "✅ Project setup complete!"
+          echo "Node version: ${{ steps.setup.outputs.node-version }}"
+          echo "Cache was hit: ${{ steps.setup.outputs.cache-hit }}"
+          echo "Package manager: ${{ steps.setup.outputs.package-manager-version }}"
+
+      - name: Run tests with composite action
+        id: test
+        uses: ./.github/actions/demo-5/run-tests
+        with:
+          test-command: 'echo "Running mock tests..." && exit 0'
+          coverage-enabled: 'true'
+          coverage-threshold: '80'
+
+      - name: Display test results
+        run: |
+          echo "✅ Tests complete!"
+          echo "Test status: ${{ steps.test.outputs.test-status }}"
+          echo "Coverage: ${{ steps.test.outputs.coverage-percentage }}%"
