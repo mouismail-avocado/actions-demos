@@ -1,0 +1,143 @@
+name: 'Setup Project'
+description: 'Sets up the project with Node.js, dependencies, and caching'
+author: 'mouismail'
+
+inputs:
+  node-version:
+    description: 'Node.js version to use'
+    required: false
+    default: '18'
+  package-manager:
+    description: 'Package manager to use (npm, yarn, or pnpm)'
+    required: false
+    default: 'npm'
+  working-directory:
+    description: 'Working directory for the project'
+    required: false
+    default: '.'
+  install-deps:
+    description: 'Whether to install dependencies'
+    required: false
+    default: 'true'
+  build-command:
+    description: 'Build command to run after setup'
+    required: false
+    default: ''
+
+outputs:
+  node-version:
+    description: 'The Node.js version that was set up'
+    value: ${{ steps.setup-node.outputs.node-version }}
+  cache-hit:
+    description: 'Whether the cache was hit'
+    value: ${{ steps.cache-deps.outputs.cache-hit }}
+  package-manager-version:
+    description: 'Version of the package manager'
+    value: ${{ steps.detect-pm.outputs.version }}
+
+runs:
+  using: 'composite'
+  steps:
+    - name: Setup Node.js
+      id: setup-node
+      uses: actions/setup-node@v4
+      with:
+        node-version: ${{ inputs.node-version }}
+
+    - name: Detect package manager
+      id: detect-pm
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        if [ -f "yarn.lock" ]; then
+          echo "manager=yarn" >> $GITHUB_OUTPUT
+          echo "version=$(yarn --version)" >> $GITHUB_OUTPUT
+          echo "lockfile=yarn.lock" >> $GITHUB_OUTPUT
+          echo "cache-folder=$(yarn cache dir)" >> $GITHUB_OUTPUT
+        elif [ -f "pnpm-lock.yaml" ]; then
+          echo "manager=pnpm" >> $GITHUB_OUTPUT
+          echo "version=$(pnpm --version)" >> $GITHUB_OUTPUT
+          echo "lockfile=pnpm-lock.yaml" >> $GITHUB_OUTPUT
+          echo "cache-folder=$(pnpm store path)" >> $GITHUB_OUTPUT
+        else
+          echo "manager=npm" >> $GITHUB_OUTPUT
+          echo "version=$(npm --version)" >> $GITHUB_OUTPUT
+          echo "lockfile=package-lock.json" >> $GITHUB_OUTPUT
+          echo "cache-folder=$(npm config get cache)" >> $GITHUB_OUTPUT
+        fi
+
+    - name: Get package manager from input or detection
+      id: pm-info
+      shell: bash
+      run: |
+        PM="${{ inputs.package-manager }}"
+        if [ "$PM" = "auto" ] || [ -z "$PM" ]; then
+          PM="${{ steps.detect-pm.outputs.manager || 'npm' }}"
+        fi
+        echo "manager=$PM" >> $GITHUB_OUTPUT
+        
+        # Set cache paths based on package manager
+        case "$PM" in
+          yarn)
+            echo "cache-dependency-path=${{ inputs.working-directory }}/yarn.lock" >> $GITHUB_OUTPUT
+            ;;
+          pnpm)
+            echo "cache-dependency-path=${{ inputs.working-directory }}/pnpm-lock.yaml" >> $GITHUB_OUTPUT
+            ;;
+          *)
+            echo "cache-dependency-path=${{ inputs.working-directory }}/package-lock.json" >> $GITHUB_OUTPUT
+            ;;
+        esac
+
+    - name: Cache dependencies
+      id: cache-deps
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.npm
+          ~/.yarn/cache
+          ~/.pnpm-store
+          ${{ inputs.working-directory }}/node_modules
+        key: ${{ runner.os }}-${{ steps.pm-info.outputs.manager }}-${{ hashFiles(steps.pm-info.outputs.cache-dependency-path) }}
+        restore-keys: |
+          ${{ runner.os }}-${{ steps.pm-info.outputs.manager }}-
+
+    - name: Install dependencies
+      if: inputs.install-deps == 'true'
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "📦 Installing dependencies with ${{ steps.pm-info.outputs.manager }}..."
+        
+        case "${{ steps.pm-info.outputs.manager }}" in
+          yarn)
+            yarn install --frozen-lockfile
+            ;;
+          pnpm)
+            pnpm install --frozen-lockfile
+            ;;
+          *)
+            npm ci
+            ;;
+        esac
+
+    - name: Run build command
+      if: inputs.build-command != ''
+      shell: bash
+      working-directory: ${{ inputs.working-directory }}
+      run: |
+        echo "🔨 Running build command: ${{ inputs.build-command }}"
+        ${{ inputs.build-command }}
+
+    - name: Summary
+      shell: bash
+      run: |
+        echo "## Setup Complete! 🎉" >> $GITHUB_STEP_SUMMARY
+        echo "" >> $GITHUB_STEP_SUMMARY
+        echo "- **Node.js Version**: ${{ steps.setup-node.outputs.node-version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Package Manager**: ${{ steps.pm-info.outputs.manager }} v${{ steps.detect-pm.outputs.version }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Cache Hit**: ${{ steps.cache-deps.outputs.cache-hit == 'true' && '✅ Yes' || '❌ No' }}" >> $GITHUB_STEP_SUMMARY
+        echo "- **Working Directory**: ${{ inputs.working-directory }}" >> $GITHUB_STEP_SUMMARY
+        if [ "${{ inputs.build-command }}" != "" ]; then
+          echo "- **Build Command**: \`${{ inputs.build-command }}\`" >> $GITHUB_STEP_SUMMARY
+        fi
